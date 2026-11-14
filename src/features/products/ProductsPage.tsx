@@ -27,13 +27,6 @@ import { ProductRow } from './ProductRow.tsx'
 const ALL_CATEGORIES = 'all'
 const TOGGLE_VISIBILITY_KEY = ['products', 'toggle-visibility']
 
-function normalize(text: string) {
-  return text
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-}
-
 function sortByName(products: Product[]) {
   return products.toSorted((a, b) => a.name.localeCompare(b.name, 'es'))
 }
@@ -45,7 +38,6 @@ interface ProductsPageProps {
 
 export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
   const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
   const [editing, setEditing] = useState<Product | 'new' | null>(null)
   const categoryKey =
@@ -180,10 +172,6 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
     }
   }
 
-  const query = normalize(search.trim())
-  const visibleProducts = products.filter((product) =>
-    normalize(product.name).includes(query),
-  )
   const hiddenCount = products.filter(
     (product) => product.deletedAt != null,
   ).length
@@ -192,14 +180,6 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
     <>
       <div className="toolbar">
         <div className="toolbar-inner">
-          <input
-            type="search"
-            className="search-input"
-            placeholder="Buscar producto"
-            aria-label="Buscar producto"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
           <ul className="chip-list" aria-label="Filtrar por categoría">
             {[{ key: ALL_CATEGORIES, name: 'Todas' }, ...categories].map(
               (category) => (
@@ -224,9 +204,7 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
           <h1>Productos</h1>
           {status === 'success' && (
             <span>
-              {visibleProducts.length === products.length
-                ? `${products.length} en total`
-                : `${visibleProducts.length} de ${products.length}`}
+              {`${products.length} en total`}
               {hiddenCount > 0 &&
                 ` · ${hiddenCount} ${hiddenCount === 1 ? 'oculto' : 'ocultos'}`}
             </span>
@@ -255,17 +233,15 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
         )}
 
         {status === 'success' &&
-          (visibleProducts.length === 0 ? (
+          (products.length === 0 ? (
             <p className="empty-state">
-              {products.length > 0
-                ? 'No hay productos que coincidan con la búsqueda.'
-                : categoryKey
-                  ? 'Todavía no hay productos en esta categoría.'
-                  : 'Todavía no cargaste productos.'}
+              {categoryKey
+                ? 'Todavía no hay productos en esta categoría.'
+                : 'Todavía no cargaste productos.'}
             </p>
           ) : (
             <ul className="product-rows">
-              {visibleProducts.map((product) => (
+              {products.map((product) => (
                 <li key={product.id}>
                   <ProductRow
                     product={product}
