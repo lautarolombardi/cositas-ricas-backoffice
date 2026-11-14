@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
-import { LoginScreen } from './components/LoginScreen.tsx'
+import { LoginScreen } from './features/auth/LoginScreen.tsx'
+import { useSession } from './features/auth/useSession.ts'
 import { ProductsPage } from './features/products/ProductsPage.tsx'
-import { useSession } from './session.ts'
 import { toast } from 'sonner'
 import './App.css'
 

@@ -11,17 +11,21 @@ import {
   deleteProduct,
   getCategories,
   getProducts,
+  hideProduct,
+  showProduct,
   UnauthorizedError,
   updateProduct,
-  uploadProductImage,
 } from '../../api.ts'
-import type { Product, ProductInput } from '../../api.ts'
+import type { Product } from '../../api.ts'
 import { toast } from 'sonner'
-import { ProductFormSheet } from './ProductFormSheet.tsx'
+import {
+  ProductFormSheet,
+  type ProductSavePayload,
+} from './ProductFormSheet.tsx'
 import { ProductRow } from './ProductRow.tsx'
 
 const ALL_CATEGORIES = 'all'
-const TOGGLE_ACTIVE_KEY = ['products', 'toggle-active']
+const TOGGLE_VISIBILITY_KEY = ['products', 'toggle-visibility']
 
 function normalize(text: string) {
   return text
@@ -86,8 +90,23 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
   }
 
   const saveMutation = useMutation({
-    mutationFn: ({ id, input }: { id?: string; input: ProductInput }) =>
-      id ? updateProduct(token, id, input) : createProduct(token, input),
+    mutationFn: async ({
+      id,
+      input,
+      image,
+      visible,
+    }: { id?: string } & ProductSavePayload) => {
+      let saved = id
+        ? await updateProduct(token, id, input, image)
+        : await createProduct(token, input, image)
+      const isHidden = saved.deletedAt != null
+      if (visible && isHidden) {
+        saved = await showProduct(token, saved.id)
+      } else if (!visible && !isHidden) {
+        saved = await hideProduct(token, saved.id)
+      }
+      return saved
+    },
     onSuccess: (saved, { id }) => {
       upsert(saved)
       toast.success(
@@ -112,13 +131,15 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
     onError: handleMutationError,
   })
 
-  const toggleActiveMutation = useMutation({
-    mutationKey: TOGGLE_ACTIVE_KEY,
+  const toggleVisibilityMutation = useMutation({
+    mutationKey: TOGGLE_VISIBILITY_KEY,
     mutationFn: (product: Product) =>
-      updateProduct(token, product.id, { active: !product.active }),
+      product.deletedAt == null
+        ? hideProduct(token, product.id)
+        : showProduct(token, product.id),
     onSuccess: (saved) => {
       upsert(saved)
-      if (saved.active) {
+      if (saved.deletedAt == null) {
         toast.success(`“${saved.name}” ahora se muestra en la tienda.`)
       } else {
         toast.info(`“${saved.name}” quedó oculto en la tienda.`)
@@ -131,31 +152,22 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
       }
       console.error(error)
       toast.error(
-        `No pudimos ${product.active ? 'ocultar' : 'mostrar'} “${product.name}”. Probá de nuevo.`,
+        `No pudimos ${product.deletedAt == null ? 'ocultar' : 'mostrar'} “${product.name}”. Probá de nuevo.`,
       )
     },
   })
   const pendingIds = new Set(
     useMutationState({
-      filters: { mutationKey: TOGGLE_ACTIVE_KEY, status: 'pending' },
+      filters: { mutationKey: TOGGLE_VISIBILITY_KEY, status: 'pending' },
       select: (mutation) => (mutation.state.variables as Product).id,
     }),
   )
 
-  async function handleSave(input: ProductInput) {
+  async function handleSave(payload: ProductSavePayload) {
     await saveMutation.mutateAsync({
       id: editing && editing !== 'new' ? editing.id : undefined,
-      input,
+      ...payload,
     })
-  }
-
-  async function handleUploadImage(image: Blob) {
-    try {
-      return await uploadProductImage(token, image)
-    } catch (error) {
-      if (error instanceof UnauthorizedError) onUnauthorized()
-      throw error
-    }
   }
 
   async function handleDelete(product: Product) {
@@ -172,7 +184,9 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
   const visibleProducts = products.filter((product) =>
     normalize(product.name).includes(query),
   )
-  const hiddenCount = products.filter((product) => !product.active).length
+  const hiddenCount = products.filter(
+    (product) => product.deletedAt != null,
+  ).length
 
   return (
     <>
@@ -257,7 +271,9 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
                     product={product}
                     pending={pendingIds.has(product.id)}
                     onEdit={() => setEditing(product)}
-                    onToggleActive={() => toggleActiveMutation.mutate(product)}
+                    onToggleVisibility={() =>
+                      toggleVisibilityMutation.mutate(product)
+                    }
                   />
                 </li>
               ))}
@@ -287,7 +303,6 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
             categories[0]?.id
           }
           onSave={handleSave}
-          onUploadImage={handleUploadImage}
           onDelete={handleDelete}
           onClose={() => setEditing(null)}
         />

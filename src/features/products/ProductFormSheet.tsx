@@ -6,24 +6,31 @@ import { toast } from 'sonner'
 import { ProductThumb } from './ProductThumb.tsx'
 import { prepareImage } from './prepareImage.ts'
 
+export interface ProductSavePayload {
+  input: ProductInput
+  /** New photo to upload with the product. Omitted when the photo did not change. */
+  image?: Blob
+  /** Whether the product should be visible in the store (deletedAt null). */
+  visible: boolean
+}
+
 interface ProductFormSheetProps {
   product: Product | null
   categories: Category[]
   defaultCategoryId: string | undefined
-  onSave: (input: ProductInput) => Promise<void>
-  onUploadImage: (image: Blob) => Promise<string>
+  onSave: (payload: ProductSavePayload) => Promise<void>
   onDelete: (product: Product) => Promise<void>
   onClose: () => void
 }
 
-function uploadErrorMessage(error: unknown) {
+function saveErrorMessage(error: unknown) {
   if (error instanceof HttpError && error.status === 413) {
     return 'La foto pesa demasiado. Probá con una más liviana.'
   }
   if (error instanceof HttpError && error.status === 415) {
     return 'Ese archivo no es una foto válida. Usá JPG, PNG o WebP.'
   }
-  return 'No pudimos subir la foto. Probá de nuevo.'
+  return 'No pudimos guardar el producto. Revisá los datos y probá de nuevo.'
 }
 
 export function ProductFormSheet({
@@ -31,7 +38,6 @@ export function ProductFormSheet({
   categories,
   defaultCategoryId,
   onSave,
-  onUploadImage,
   onDelete,
   onClose,
 }: ProductFormSheetProps) {
@@ -44,13 +50,20 @@ export function ProductFormSheet({
   )
   const [description, setDescription] = useState(product?.description ?? '')
   const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '')
-  const [active, setActive] = useState(product?.active ?? true)
-  const [busy, setBusy] = useState<'saving' | 'deleting'>()
-  // Local preview of the photo being uploaded; null when no upload is in progress.
+  const [pendingImage, setPendingImage] = useState<Blob | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  const [visible, setVisible] = useState(product?.deletedAt == null)
+  const [busy, setBusy] = useState<'saving' | 'deleting'>()
+
   useEffect(() => {
     dialogRef.current?.showModal()
   }, [])
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview)
+    }
+  }, [preview])
 
   function close() {
     if (!busy) onClose()
@@ -70,18 +83,16 @@ export function ProductFormSheet({
       return
     }
 
-    const previewUrl = URL.createObjectURL(image)
-    setPreview(previewUrl)
-    try {
-      setImageUrl(await onUploadImage(image))
-    } catch (caught) {
-      if (caught instanceof UnauthorizedError) return
-      console.error(caught)
-      toast.error(uploadErrorMessage(caught))
-    } finally {
-      URL.revokeObjectURL(previewUrl)
-      setPreview(null)
-    }
+    if (preview) URL.revokeObjectURL(preview)
+    setPreview(URL.createObjectURL(image))
+    setPendingImage(image)
+  }
+
+  function clearImage() {
+    if (preview) URL.revokeObjectURL(preview)
+    setPreview(null)
+    setPendingImage(null)
+    setImageUrl('')
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -89,17 +100,20 @@ export function ProductFormSheet({
     setBusy('saving')
     try {
       await onSave({
-        name: name.trim(),
-        price: Number(price),
-        categoryId,
-        description: description.trim() || null,
-        imageUrl: imageUrl || null,
-        active,
+        input: {
+          name: name.trim(),
+          price: Number(price),
+          categoryId,
+          description: description.trim() || null,
+          imageUrl: pendingImage ? null : imageUrl || null,
+        },
+        image: pendingImage ?? undefined,
+        visible,
       })
     } catch (caught) {
       if (caught instanceof UnauthorizedError) return
       console.error(caught)
-      toast.error('No pudimos guardar el producto. Revisá los datos y probá de nuevo.')
+      toast.error(saveErrorMessage(caught))
       setBusy(undefined)
     }
   }
@@ -120,6 +134,9 @@ export function ProductFormSheet({
       setBusy(undefined)
     }
   }
+
+  const displayUrl = preview ?? (imageUrl || null)
+  const hasImage = Boolean(displayUrl)
 
   return (
     <dialog
@@ -206,11 +223,11 @@ export function ProductFormSheet({
             />
           </label>
 
-          <div className="image-field" aria-busy={preview !== null}>
+          <div className="image-field">
             <ProductThumb
               product={{
                 id: product?.id,
-                imageUrl: preview ?? (imageUrl || null),
+                imageUrl: displayUrl,
                 categoryKey:
                   categories.find((category) => category.id === categoryId)
                     ?.key ?? '',
@@ -225,21 +242,17 @@ export function ProductFormSheet({
                 <button
                   type="button"
                   className="ghost-button"
-                  disabled={preview !== null || busy !== undefined}
+                  disabled={busy !== undefined}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  {preview !== null
-                    ? 'Subiendo…'
-                    : imageUrl
-                      ? 'Cambiar foto'
-                      : 'Elegir foto'}
+                  {hasImage ? 'Cambiar foto' : 'Elegir foto'}
                 </button>
-                {imageUrl && preview === null && (
+                {hasImage && (
                   <button
                     type="button"
                     className="ghost-button"
                     disabled={busy !== undefined}
-                    onClick={() => setImageUrl('')}
+                    onClick={clearImage}
                   >
                     Quitar
                   </button>
@@ -259,7 +272,7 @@ export function ProductFormSheet({
             <span>
               Visible en la tienda
               <small>
-                {active
+                {visible
                   ? 'Los clientes pueden verlo y pedirlo.'
                   : 'Queda guardado, pero no se muestra.'}
               </small>
@@ -268,8 +281,8 @@ export function ProductFormSheet({
               <input
                 type="checkbox"
                 role="switch"
-                checked={active}
-                onChange={(event) => setActive(event.target.checked)}
+                checked={visible}
+                onChange={(event) => setVisible(event.target.checked)}
               />
               <span aria-hidden="true" />
             </span>
@@ -280,7 +293,7 @@ export function ProductFormSheet({
           <button
             type="submit"
             className="primary-button"
-            disabled={busy !== undefined || preview !== null}
+            disabled={busy !== undefined}
           >
             {busy === 'saving' ? 'Guardando…' : 'Guardar'}
           </button>

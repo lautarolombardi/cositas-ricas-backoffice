@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { login, UnauthorizedError } from '../api.ts'
+import { login, UnauthorizedError } from '../../api.ts'
 import { toast } from 'sonner'
 
 interface LoginScreenProps {

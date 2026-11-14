@@ -6,17 +6,19 @@ interface ProductRowProps {
   product: Product
   pending: boolean
   onEdit: () => void
-  onToggleActive: () => void
+  onToggleVisibility: () => void
 }
 
 export function ProductRow({
   product,
   pending,
   onEdit,
-  onToggleActive,
+  onToggleVisibility,
 }: ProductRowProps) {
+  const visible = product.deletedAt == null
+
   return (
-    <article className={`product-row${product.active ? '' : ' is-inactive'}`}>
+    <article className={`product-row${visible ? '' : ' is-inactive'}`}>
       <button
         type="button"
         className="product-row-main"
@@ -35,17 +37,17 @@ export function ProductRow({
           <p>
             {product.category.name} · <strong>{formatPrice(product.price)}</strong>
           </p>
-          {!product.active && <span className="status-pill">Oculto</span>}
+          {!visible && <span className="status-pill">Oculto</span>}
         </div>
       </button>
       <label className="switch">
         <input
           type="checkbox"
           role="switch"
-          checked={product.active}
+          checked={visible}
           disabled={pending}
           aria-label={`Mostrar ${product.name} en la tienda`}
-          onChange={onToggleActive}
+          onChange={onToggleVisibility}
         />
         <span aria-hidden="true" />
       </label>

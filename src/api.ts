@@ -10,7 +10,7 @@ export interface Product {
   imageUrl: string | null
   description: string | null
   price: number
-  active: boolean
+  deletedAt: string | null
   category: Category
 }
 
@@ -20,7 +20,6 @@ export interface ProductInput {
   imageUrl: string | null
   price: number
   categoryId: string
-  active: boolean
 }
 
 export class UnauthorizedError extends Error {
@@ -79,6 +78,20 @@ async function request<T>(
   return response.json() as Promise<T>
 }
 
+function appendProductFields(
+  body: FormData,
+  input: Partial<ProductInput>,
+  { clearImage = false }: { clearImage?: boolean } = {},
+) {
+  if (input.name !== undefined) body.append('name', input.name)
+  if (input.price !== undefined) body.append('price', String(input.price))
+  if (input.categoryId !== undefined) body.append('categoryId', input.categoryId)
+  if (input.description !== undefined) {
+    body.append('description', input.description ?? '')
+  }
+  if (clearImage) body.append('imageUrl', '')
+}
+
 export function getCategories() {
   return request<Category[]>('/categories')
 }
@@ -98,37 +111,63 @@ export function getProducts(token: string, categoryKey?: string) {
   return request<Product[]>(`/products/all${query}`, { token })
 }
 
-export function createProduct(token: string, input: ProductInput) {
-  return request<Product>('/products', {
-    method: 'POST',
-    token,
-    body: input,
-  })
-}
-
-export async function uploadProductImage(token: string, image: Blob) {
+export function createProduct(
+  token: string,
+  input: ProductInput,
+  image?: Blob,
+) {
   const body = new FormData()
-  body.append('image', image)
-  const { imageUrl } = await request<{ imageUrl: string }>('/products/images', {
+  appendProductFields(body, input)
+  if (image) body.append('image', image, 'photo.jpg')
+  return request<Product>('/products', {
     method: 'POST',
     token,
     body,
   })
-  return imageUrl
 }
 
 export function updateProduct(
   token: string,
   id: string,
   input: Partial<ProductInput>,
+  image?: Blob,
 ) {
+  // Multipart when attaching a new photo or clearing imageUrl in the same request.
+  const needsMultipart = image !== undefined || input.imageUrl === null
+  if (!needsMultipart) {
+    return request<Product>(`/products/${id}`, {
+      method: 'PATCH',
+      token,
+      body: input,
+    })
+  }
+
+  const body = new FormData()
+  appendProductFields(body, input, {
+    clearImage: input.imageUrl === null && !image,
+  })
+  if (image) body.append('image', image, 'photo.jpg')
   return request<Product>(`/products/${id}`, {
     method: 'PATCH',
     token,
-    body: input,
+    body,
+  })
+}
+
+export function hideProduct(token: string, id: string) {
+  return request<Product>(`/products/${id}`, { method: 'DELETE', token })
+}
+
+export function showProduct(token: string, id: string) {
+  return request<Product>(`/products/${id}/restore`, {
+    method: 'POST',
+    token,
   })
 }
 
 export function deleteProduct(token: string, id: string) {
-  return request<void>(`/products/${id}`, { method: 'DELETE', token })
+  return request<void>(`/products/${id}/permanent`, {
+    method: 'DELETE',
+    token,
+  })
 }
