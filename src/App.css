@@ -258,7 +258,7 @@
   }
 }
 
-/* Toolbar: search + category chips */
+/* Toolbar: category chips */
 
 .toolbar {
   position: sticky;
@@ -276,21 +276,6 @@
   max-width: 960px;
   margin: 0 auto;
   padding: 12px 16px;
-}
-
-.search-input {
-  width: 100%;
-  min-height: 44px;
-  padding: 0 16px;
-  border: 1.5px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  font-size: 1rem;
-
-  &:focus {
-    border-color: var(--ink);
-    outline: none;
-  }
 }
 
 .chip-list {
