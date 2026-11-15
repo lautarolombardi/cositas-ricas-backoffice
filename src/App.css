@@ -866,14 +866,11 @@
 /* Larger screens */
 
 @media (min-width: 720px) {
-  .toolbar-inner {
-    grid-template-columns: minmax(220px, 320px) 1fr;
-    align-items: center;
-  }
-
   .chip-list {
     margin: 0;
     padding: 0;
+    flex-wrap: wrap;
+    overflow-x: visible;
   }
 
   .page {
