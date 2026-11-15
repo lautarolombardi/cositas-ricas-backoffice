@@ -39,6 +39,9 @@ export function ProductRow({
           </p>
           {!visible && <span className="status-pill">Oculto</span>}
         </div>
+        <span className="product-row-edit" aria-hidden="true">
+          Editar ›
+        </span>
       </button>
       <label className="switch">
         <input

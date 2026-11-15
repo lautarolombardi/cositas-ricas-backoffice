@@ -427,6 +427,16 @@
   }
 }
 
+.product-row-edit {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-right: 2px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .status-pill {
   justify-self: start;
   margin-top: 2px;
