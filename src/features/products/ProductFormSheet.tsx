@@ -3,6 +3,7 @@ import type { ChangeEvent, FormEvent } from 'react'
 import { HttpError, UnauthorizedError } from '../../api.ts'
 import type { Category, Product, ProductInput } from '../../api.ts'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
+import { ImageLightbox } from '../../components/ImageLightbox.tsx'
 import { toast } from 'sonner'
 import { ProductThumb } from './ProductThumb.tsx'
 import { prepareImage } from './prepareImage.ts'
@@ -56,6 +57,7 @@ export function ProductFormSheet({
   const [visible, setVisible] = useState(product?.deletedAt == null)
   const [busy, setBusy] = useState<'saving' | 'deleting'>()
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
 
   useEffect(() => {
     dialogRef.current?.showModal()
@@ -68,7 +70,7 @@ export function ProductFormSheet({
   }, [preview])
 
   function close() {
-    if (!busy && !confirmDeleteOpen) onClose()
+    if (!busy && !confirmDeleteOpen && !lightboxOpen) onClose()
   }
 
   async function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
@@ -136,6 +138,12 @@ export function ProductFormSheet({
 
   const displayUrl = preview ?? (imageUrl || null)
   const hasImage = Boolean(displayUrl)
+  const thumbProduct = {
+    id: product?.id,
+    imageUrl: displayUrl,
+    categoryKey:
+      categories.find((category) => category.id === categoryId)?.key ?? '',
+  }
 
   return (
     <>
@@ -224,16 +232,18 @@ export function ProductFormSheet({
             </label>
 
             <div className="image-field">
-              <ProductThumb
-                product={{
-                  id: product?.id,
-                  imageUrl: displayUrl,
-                  categoryKey:
-                    categories.find((category) => category.id === categoryId)
-                      ?.key ?? '',
-                }}
-                size="large"
-              />
+              {hasImage ? (
+                <button
+                  type="button"
+                  className="thumb-zoom-button"
+                  aria-label="Ver foto más grande"
+                  onClick={() => setLightboxOpen(true)}
+                >
+                  <ProductThumb product={thumbProduct} size="large" />
+                </button>
+              ) : (
+                <ProductThumb product={thumbProduct} size="large" />
+              )}
               <div className="field">
                 <span>
                   Foto <small>(opcional)</small>
@@ -320,6 +330,14 @@ export function ProductFormSheet({
           busy={busy === 'deleting'}
           onConfirm={handleDelete}
           onCancel={() => setConfirmDeleteOpen(false)}
+        />
+      )}
+
+      {lightboxOpen && displayUrl && (
+        <ImageLightbox
+          src={displayUrl}
+          alt={name.trim() || 'Foto del producto'}
+          onClose={() => setLightboxOpen(false)}
         />
       )}
     </>
