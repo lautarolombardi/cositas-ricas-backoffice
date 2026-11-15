@@ -571,6 +571,67 @@
   }
 }
 
+/* Confirm dialog */
+
+.confirm-dialog {
+  width: min(100% - 32px, 400px);
+  margin: auto;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--text);
+  box-shadow: var(--shadow);
+
+  &::backdrop {
+    background: rgba(59, 30, 38, 0.55);
+    backdrop-filter: blur(2px);
+  }
+
+  &[open] {
+    animation: confirm-pop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+
+@keyframes confirm-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+}
+
+.confirm-dialog-content {
+  display: grid;
+  gap: 12px;
+  padding: 22px 20px 18px;
+
+  h2 {
+    font-size: 1.35rem;
+    font-style: italic;
+    font-weight: 600;
+  }
+}
+
+.confirm-dialog-description {
+  color: var(--text);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+
+  .ghost-button,
+  .primary-button,
+  .danger-button {
+    min-height: 44px;
+  }
+}
+
 /* Bottom sheet with the product form */
 
 .sheet {
