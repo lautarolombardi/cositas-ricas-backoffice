@@ -86,18 +86,10 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
       id,
       input,
       image,
-      visible,
     }: { id?: string } & ProductSavePayload) => {
-      let saved = id
+      return id
         ? await updateProduct(token, id, input, image)
         : await createProduct(token, input, image)
-      const isHidden = saved.deletedAt != null
-      if (visible && isHidden) {
-        saved = await showProduct(token, saved.id)
-      } else if (!visible && !isHidden) {
-        saved = await hideProduct(token, saved.id)
-      }
-      return saved
     },
     onSuccess: (saved, { id }) => {
       upsert(saved)

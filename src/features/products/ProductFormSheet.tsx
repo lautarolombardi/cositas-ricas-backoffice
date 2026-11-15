@@ -12,8 +12,6 @@ export interface ProductSavePayload {
   input: ProductInput
   /** New photo to upload with the product. Omitted when the photo did not change. */
   image?: Blob
-  /** Whether the product should be visible in the store (deletedAt null). */
-  visible: boolean
 }
 
 interface ProductFormSheetProps {
@@ -54,7 +52,6 @@ export function ProductFormSheet({
   const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '')
   const [pendingImage, setPendingImage] = useState<Blob | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
-  const [visible, setVisible] = useState(product?.deletedAt == null)
   const [busy, setBusy] = useState<'saving' | 'deleting'>()
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -112,7 +109,6 @@ export function ProductFormSheet({
           imageUrl: pendingImage ? null : imageUrl || null,
         },
         image: pendingImage ?? undefined,
-        visible,
       })
     } catch (caught) {
       if (caught instanceof UnauthorizedError) return
@@ -277,26 +273,6 @@ export function ProductFormSheet({
                 />
               </div>
             </div>
-
-            <label className="toggle-field">
-              <span>
-                Visible en la tienda
-                <small>
-                  {visible
-                    ? 'Los clientes pueden verlo y pedirlo.'
-                    : 'Queda guardado, pero no se muestra.'}
-                </small>
-              </span>
-              <span className="switch">
-                <input
-                  type="checkbox"
-                  role="switch"
-                  checked={visible}
-                  onChange={(event) => setVisible(event.target.checked)}
-                />
-                <span aria-hidden="true" />
-              </span>
-            </label>
           </div>
 
           <footer className="sheet-footer">
@@ -324,7 +300,7 @@ export function ProductFormSheet({
       {confirmDeleteOpen && product && (
         <ConfirmDialog
           title="Eliminar producto"
-          description={`¿Eliminar “${product.name}” definitivamente? Si solo querés sacarlo de la tienda, desactivalo.`}
+          description={`¿Eliminar “${product.name}” definitivamente? Si solo querés sacarlo de la tienda, ocultalo desde el listado.`}
           confirmLabel={busy === 'deleting' ? 'Eliminando…' : 'Eliminar'}
           confirmVariant="danger"
           busy={busy === 'deleting'}

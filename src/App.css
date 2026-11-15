@@ -770,30 +770,6 @@
   margin-top: 4px;
 }
 
-.toggle-field {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 14px;
-  border: 1.5px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-  cursor: pointer;
-
-  > span:first-child {
-    display: grid;
-    color: var(--text-h);
-    font-weight: 700;
-  }
-
-  small {
-    color: var(--muted);
-    font-size: 0.8125rem;
-    font-weight: 400;
-  }
-}
-
 .sheet-footer {
   position: sticky;
   bottom: 0;
