@@ -85,11 +85,12 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
     mutationFn: async ({
       id,
       input,
-      image,
+      imageIds,
+      images = [],
     }: { id?: string } & ProductSavePayload) => {
       return id
-        ? await updateProduct(token, id, input, image)
-        : await createProduct(token, input, image)
+        ? await updateProduct(token, id, input, { imageIds, images })
+        : await createProduct(token, input, images)
     },
     onSuccess: (saved, { id }) => {
       upsert(saved)

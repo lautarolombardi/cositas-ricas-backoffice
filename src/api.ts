@@ -4,10 +4,16 @@ export interface Category {
   name: string
 }
 
+export interface ProductImage {
+  id: string
+  url: string
+  position: number
+}
+
 export interface Product {
   id: string
   name: string
-  imageUrl: string | null
+  images: ProductImage[]
   description: string | null
   price: number
   deletedAt: string | null
@@ -17,7 +23,6 @@ export interface Product {
 export interface ProductInput {
   name: string
   description: string | null
-  imageUrl: string | null
   price: number
   categoryId: string
 }
@@ -78,18 +83,13 @@ async function request<T>(
   return response.json() as Promise<T>
 }
 
-function appendProductFields(
-  body: FormData,
-  input: Partial<ProductInput>,
-  { clearImage = false }: { clearImage?: boolean } = {},
-) {
+function appendProductFields(body: FormData, input: Partial<ProductInput>) {
   if (input.name !== undefined) body.append('name', input.name)
   if (input.price !== undefined) body.append('price', String(input.price))
   if (input.categoryId !== undefined) body.append('categoryId', input.categoryId)
   if (input.description !== undefined) {
     body.append('description', input.description ?? '')
   }
-  if (clearImage) body.append('imageUrl', '')
 }
 
 export function getCategories() {
@@ -114,11 +114,13 @@ export function getProducts(token: string, categoryKey?: string) {
 export function createProduct(
   token: string,
   input: ProductInput,
-  image?: Blob,
+  images: Blob[] = [],
 ) {
   const body = new FormData()
   appendProductFields(body, input)
-  if (image) body.append('image', image, 'photo.jpg')
+  for (const image of images) {
+    body.append('images', image, 'photo.jpg')
+  }
   return request<Product>('/products', {
     method: 'POST',
     token,
@@ -130,11 +132,17 @@ export function updateProduct(
   token: string,
   id: string,
   input: Partial<ProductInput>,
-  image?: Blob,
+  {
+    imageIds,
+    images = [],
+  }: {
+    /** Ordered plan: UUID to keep, null for each new upload in `images`. */
+    imageIds?: (string | null)[]
+    images?: Blob[]
+  } = {},
 ) {
-  // Multipart when attaching a new photo or clearing imageUrl in the same request.
-  const needsMultipart = image !== undefined || input.imageUrl === null
-  if (!needsMultipart) {
+  const imagesTouched = imageIds !== undefined
+  if (!imagesTouched) {
     return request<Product>(`/products/${id}`, {
       method: 'PATCH',
       token,
@@ -143,10 +151,11 @@ export function updateProduct(
   }
 
   const body = new FormData()
-  appendProductFields(body, input, {
-    clearImage: input.imageUrl === null && !image,
-  })
-  if (image) body.append('image', image, 'photo.jpg')
+  appendProductFields(body, input)
+  body.append('imageIds', JSON.stringify(imageIds))
+  for (const image of images) {
+    body.append('images', image, 'photo.jpg')
+  }
   return request<Product>(`/products/${id}`, {
     method: 'PATCH',
     token,

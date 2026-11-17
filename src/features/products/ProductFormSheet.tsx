@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import { HttpError, UnauthorizedError } from '../../api.ts'
 import type { Category, Product, ProductInput } from '../../api.ts'
@@ -8,10 +8,18 @@ import { toast } from 'sonner'
 import { ProductThumb } from './ProductThumb.tsx'
 import { prepareImage } from './prepareImage.ts'
 
+const MAX_PRODUCT_IMAGES = 3
+
+type ImageSlot =
+  | { kind: 'existing'; id: string; url: string }
+  | { kind: 'pending'; blob: Blob; preview: string }
+
 export interface ProductSavePayload {
   input: ProductInput
-  /** New photo to upload with the product. Omitted when the photo did not change. */
-  image?: Blob
+  /** Ordered plan of kept image ids and nulls for new uploads. Omitted when unchanged. */
+  imageIds?: (string | null)[]
+  /** New photos matching null slots in `imageIds` (create: all new photos). */
+  images?: Blob[]
 }
 
 interface ProductFormSheetProps {
@@ -25,12 +33,29 @@ interface ProductFormSheetProps {
 
 function saveErrorMessage(error: unknown) {
   if (error instanceof HttpError && error.status === 413) {
-    return 'La foto pesa demasiado. Probá con una más liviana.'
+    return 'Alguna foto pesa demasiado. Probá con una más liviana.'
   }
   if (error instanceof HttpError && error.status === 415) {
     return 'Ese archivo no es una foto válida. Usá JPG, PNG o WebP.'
   }
   return 'No pudimos guardar el producto. Revisá los datos y probá de nuevo.'
+}
+
+function slotsFromProduct(product: Product | null): ImageSlot[] {
+  return (product?.images ?? [])
+    .toSorted((a, b) => a.position - b.position)
+    .map((image) => ({ kind: 'existing' as const, id: image.id, url: image.url }))
+}
+
+function sameImagePlan(original: Product | null, slots: ImageSlot[]) {
+  const originalIds = (original?.images ?? [])
+    .toSorted((a, b) => a.position - b.position)
+    .map((image) => image.id)
+  if (slots.some((slot) => slot.kind === 'pending')) return false
+  if (slots.length !== originalIds.length) return false
+  return slots.every(
+    (slot, index) => slot.kind === 'existing' && slot.id === originalIds[index],
+  )
 }
 
 export function ProductFormSheet({
@@ -43,18 +68,21 @@ export function ProductFormSheet({
 }: ProductFormSheetProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const replaceIndexRef = useRef<number | null>(null)
+  const imagesLabelId = useId()
   const [name, setName] = useState(product?.name ?? '')
   const [price, setPrice] = useState(product ? String(product.price) : '')
   const [categoryId, setCategoryId] = useState(
     product?.category.id ?? defaultCategoryId ?? '',
   )
   const [description, setDescription] = useState(product?.description ?? '')
-  const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '')
-  const [pendingImage, setPendingImage] = useState<Blob | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
+  const [slots, setSlots] = useState<ImageSlot[]>(() => slotsFromProduct(product))
   const [busy, setBusy] = useState<'saving' | 'deleting'>()
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
-  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+
+  const slotsRef = useRef(slots)
+  slotsRef.current = slots
 
   useEffect(() => {
     dialogRef.current?.showModal()
@@ -62,53 +90,101 @@ export function ProductFormSheet({
 
   useEffect(() => {
     return () => {
-      if (preview) URL.revokeObjectURL(preview)
+      for (const slot of slotsRef.current) {
+        if (slot.kind === 'pending') URL.revokeObjectURL(slot.preview)
+      }
     }
-  }, [preview])
+  }, [])
 
   function close() {
-    if (!busy && !confirmDeleteOpen && !lightboxOpen) onClose()
+    if (!busy && !confirmDeleteOpen && !lightboxUrl) onClose()
+  }
+
+  function openFilePicker(replaceIndex: number | null = null) {
+    replaceIndexRef.current = replaceIndex
+    fileInputRef.current?.click()
   }
 
   async function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
+    const files = [...(event.target.files ?? [])]
     event.target.value = ''
-    if (!file) return
+    if (files.length === 0) return
 
-    let image: Blob
-    try {
-      image = await prepareImage(file)
-    } catch (caught) {
-      console.error(caught)
-      toast.error('No pudimos leer esa foto. Probá con otra en JPG, PNG o WebP.')
-      return
+    const replaceIndex = replaceIndexRef.current
+    replaceIndexRef.current = null
+
+    const prepared: ImageSlot[] = []
+    for (const file of files) {
+      try {
+        const blob = await prepareImage(file)
+        prepared.push({
+          kind: 'pending',
+          blob,
+          preview: URL.createObjectURL(blob),
+        })
+      } catch (caught) {
+        console.error(caught)
+        toast.error(
+          'No pudimos leer esa foto. Probá con otra en JPG, PNG o WebP.',
+        )
+      }
     }
+    if (prepared.length === 0) return
 
-    if (preview) URL.revokeObjectURL(preview)
-    setPreview(URL.createObjectURL(image))
-    setPendingImage(image)
+    setSlots((current) => {
+      if (replaceIndex !== null) {
+        const previous = current[replaceIndex]
+        if (previous?.kind === 'pending') URL.revokeObjectURL(previous.preview)
+        const next = [...current]
+        next[replaceIndex] = prepared[0]!
+        for (const extra of prepared.slice(1)) {
+          URL.revokeObjectURL(extra.preview)
+        }
+        return next
+      }
+
+      const room = MAX_PRODUCT_IMAGES - current.length
+      const accepted = prepared.slice(0, room)
+      for (const extra of prepared.slice(room)) {
+        URL.revokeObjectURL(extra.preview)
+      }
+      if (accepted.length < prepared.length) {
+        toast.message(`Podés cargar hasta ${MAX_PRODUCT_IMAGES} fotos.`)
+      }
+      return [...current, ...accepted]
+    })
   }
 
-  function clearImage() {
-    if (preview) URL.revokeObjectURL(preview)
-    setPreview(null)
-    setPendingImage(null)
-    setImageUrl('')
+  function removeSlot(index: number) {
+    setSlots((current) => {
+      const target = current[index]
+      if (target?.kind === 'pending') URL.revokeObjectURL(target.preview)
+      return current.filter((_, i) => i !== index)
+    })
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setBusy('saving')
     try {
+      const input: ProductInput = {
+        name: name.trim(),
+        price: Number(price),
+        categoryId,
+        description: description.trim() || null,
+      }
+      const imagesChanged = !sameImagePlan(product, slots)
+      const images = slots
+        .filter((slot) => slot.kind === 'pending')
+        .map((slot) => slot.blob)
+      const imageIds = imagesChanged
+        ? slots.map((slot) => (slot.kind === 'existing' ? slot.id : null))
+        : undefined
+
       await onSave({
-        input: {
-          name: name.trim(),
-          price: Number(price),
-          categoryId,
-          description: description.trim() || null,
-          imageUrl: pendingImage ? null : imageUrl || null,
-        },
-        image: pendingImage ?? undefined,
+        input,
+        imageIds,
+        images: images.length > 0 ? images : undefined,
       })
     } catch (caught) {
       if (caught instanceof UnauthorizedError) return
@@ -132,14 +208,9 @@ export function ProductFormSheet({
     }
   }
 
-  const displayUrl = preview ?? (imageUrl || null)
-  const hasImage = Boolean(displayUrl)
-  const thumbProduct = {
-    id: product?.id,
-    imageUrl: displayUrl,
-    categoryKey:
-      categories.find((category) => category.id === categoryId)?.key ?? '',
-  }
+  const categoryKey =
+    categories.find((category) => category.id === categoryId)?.key ?? ''
+  const canAddMore = slots.length < MAX_PRODUCT_IMAGES
 
   return (
     <>
@@ -227,47 +298,71 @@ export function ProductFormSheet({
               />
             </label>
 
-            <div className="image-field">
-              {hasImage ? (
-                <button
-                  type="button"
-                  className="thumb-zoom-button"
-                  aria-label="Ver foto más grande"
-                  onClick={() => setLightboxOpen(true)}
-                >
-                  <ProductThumb product={thumbProduct} size="large" />
-                </button>
-              ) : (
-                <ProductThumb product={thumbProduct} size="large" />
-              )}
+            <div className="image-field" aria-labelledby={imagesLabelId}>
               <div className="field">
-                <span>
-                  Foto <small>(opcional)</small>
+                <span id={imagesLabelId}>
+                  Fotos <small>(hasta {MAX_PRODUCT_IMAGES}, opcional)</small>
                 </span>
+                <ul className="image-slot-list">
+                  {slots.map((slot, index) => {
+                    const url =
+                      slot.kind === 'pending' ? slot.preview : slot.url
+                    return (
+                      <li key={slot.kind === 'existing' ? slot.id : url}>
+                        <div className="image-slot">
+                          <button
+                            type="button"
+                            className="thumb-zoom-button"
+                            aria-label={`Ver foto ${index + 1} más grande`}
+                            onClick={() => setLightboxUrl(url)}
+                          >
+                            <ProductThumb
+                              product={{
+                                id: product?.id,
+                                imageUrl: url,
+                                categoryKey,
+                              }}
+                              size="large"
+                            />
+                          </button>
+                          <div className="image-slot-actions">
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              disabled={busy !== undefined}
+                              onClick={() => openFilePicker(index)}
+                            >
+                              Cambiar
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              disabled={busy !== undefined}
+                              onClick={() => removeSlot(index)}
+                            >
+                              Quitar
+                            </button>
+                          </div>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
                 <div className="image-field-actions">
                   <button
                     type="button"
                     className="ghost-button"
-                    disabled={busy !== undefined}
-                    onClick={() => fileInputRef.current?.click()}
+                    disabled={busy !== undefined || !canAddMore}
+                    onClick={() => openFilePicker(null)}
                   >
-                    {hasImage ? 'Cambiar foto' : 'Elegir foto'}
+                    {slots.length === 0 ? 'Elegir fotos' : 'Agregar foto'}
                   </button>
-                  {hasImage && (
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      disabled={busy !== undefined}
-                      onClick={clearImage}
-                    >
-                      Quitar
-                    </button>
-                  )}
                 </div>
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   hidden
                   onChange={handleImageChange}
                 />
@@ -309,11 +404,11 @@ export function ProductFormSheet({
         />
       )}
 
-      {lightboxOpen && displayUrl && (
+      {lightboxUrl && (
         <ImageLightbox
-          src={displayUrl}
+          src={lightboxUrl}
           alt={name.trim() || 'Foto del producto'}
-          onClose={() => setLightboxOpen(false)}
+          onClose={() => setLightboxUrl(null)}
         />
       )}
     </>

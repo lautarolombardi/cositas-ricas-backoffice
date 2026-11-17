@@ -795,24 +795,34 @@
 }
 
 .image-field {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-
-  &[aria-busy='true'] .thumb {
-    opacity: 0.6;
-  }
+  display: grid;
+  gap: 10px;
 
   .field {
-    flex: 1;
+    display: grid;
+    gap: 8px;
   }
 }
 
+.image-slot-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.image-slot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.image-slot-actions,
 .image-field-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 4px;
 }
 
 .sheet-footer {

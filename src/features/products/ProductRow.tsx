@@ -28,7 +28,7 @@ export function ProductRow({
         <ProductThumb
           product={{
             id: product.id,
-            imageUrl: product.imageUrl,
+            imageUrl: product.images[0]?.url ?? null,
             categoryKey: product.category.key,
           }}
         />
