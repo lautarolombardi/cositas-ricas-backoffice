@@ -210,6 +210,41 @@
   color: var(--accent);
 }
 
+.password-field {
+  position: relative;
+
+  input {
+    padding-right: 48px;
+  }
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  transform: translateY(-50%);
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+
+  &:hover {
+    background: var(--accent-soft);
+    color: var(--text-h);
+  }
+
+  &[aria-pressed='true'] {
+    color: var(--accent);
+  }
+}
+
 /* Top bar */
 
 .topbar {
