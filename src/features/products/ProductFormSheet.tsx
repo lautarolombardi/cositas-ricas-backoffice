@@ -10,9 +10,11 @@ import { prepareImage } from './prepareImage.ts'
 
 const MAX_PRODUCT_IMAGES = 3
 
+type PendingImageSlot = { kind: 'pending'; blob: Blob; preview: string }
+
 type ImageSlot =
   | { kind: 'existing'; id: string; url: string }
-  | { kind: 'pending'; blob: Blob; preview: string }
+  | PendingImageSlot
 
 export interface ProductSavePayload {
   input: ProductInput
@@ -113,7 +115,7 @@ export function ProductFormSheet({
     const replaceIndex = replaceIndexRef.current
     replaceIndexRef.current = null
 
-    const prepared: ImageSlot[] = []
+    const prepared: PendingImageSlot[] = []
     for (const file of files) {
       try {
         const blob = await prepareImage(file)
