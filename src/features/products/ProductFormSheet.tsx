@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import type { ChangeEvent, FormEvent } from 'react'
+import type { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { HttpError, UnauthorizedError } from '../../api.ts'
 import type { Category, Product, ProductInput } from '../../api.ts'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
@@ -82,9 +82,14 @@ export function ProductFormSheet({
   const [busy, setBusy] = useState<'saving' | 'deleting'>()
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const [dragFrom, setDragFrom] = useState<number | null>(null)
+  const [dragOver, setDragOver] = useState<number | null>(null)
 
   const slotsRef = useRef(slots)
   slotsRef.current = slots
+  const dragFromRef = useRef<number | null>(null)
+  const dragOverRef = useRef<number | null>(null)
+  const suppressPreviewClickRef = useRef(false)
 
   useEffect(() => {
     dialogRef.current?.showModal()
@@ -165,17 +170,87 @@ export function ProductFormSheet({
     })
   }
 
-  function moveSlot(index: number, direction: -1 | 1) {
+  function reorderSlot(from: number, to: number) {
     setSlots((current) => {
-      const target = index + direction
-      if (target < 0 || target >= current.length) return current
+      if (from === to || from < 0 || to < 0 || to >= current.length) {
+        return current
+      }
       const next = [...current]
-      const a = next[index]!
-      const b = next[target]!
-      next[index] = b
-      next[target] = a
+      const [item] = next.splice(from, 1)
+      next.splice(to, 0, item!)
       return next
     })
+  }
+
+  function handleImagePointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    index: number,
+  ) {
+    if (busy || event.button !== 0) return
+
+    const preview = event.currentTarget
+    const pointerId = event.pointerId
+    const startX = event.clientX
+    const startY = event.clientY
+    const canDrag = slotsRef.current.length >= 2
+    let active = false
+
+    const stop = () => {
+      if (preview.hasPointerCapture(pointerId)) {
+        preview.releasePointerCapture(pointerId)
+      }
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      dragFromRef.current = null
+      dragOverRef.current = null
+      setDragFrom(null)
+      setDragOver(null)
+    }
+
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId || !canDrag) return
+      const distance = Math.hypot(ev.clientX - startX, ev.clientY - startY)
+      if (!active && distance < 8) return
+      if (!active) {
+        active = true
+        suppressPreviewClickRef.current = true
+        dragFromRef.current = index
+        dragOverRef.current = index
+        setDragFrom(index)
+        setDragOver(index)
+        preview.setPointerCapture(pointerId)
+        ev.preventDefault()
+      }
+
+      const under = document.elementFromPoint(ev.clientX, ev.clientY)
+      const item = under?.closest<HTMLElement>('[data-slot-index]')
+      if (!item) return
+      const over = Number(item.dataset.slotIndex)
+      if (
+        Number.isNaN(over) ||
+        over < 0 ||
+        over >= slotsRef.current.length ||
+        dragOverRef.current === over
+      ) {
+        return
+      }
+      dragOverRef.current = over
+      setDragOver(over)
+    }
+
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return
+      const from = dragFromRef.current
+      const to = dragOverRef.current
+      const didDrag = active
+      stop()
+      if (didDrag && from != null && to != null) reorderSlot(from, to)
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -225,7 +300,6 @@ export function ProductFormSheet({
 
   const categoryKey =
     categories.find((category) => category.id === categoryId)?.key ?? ''
-  const canAddMore = slots.length < MAX_PRODUCT_IMAGES
 
   return (
     <>
@@ -319,106 +393,126 @@ export function ProductFormSheet({
                   Fotos <small>(hasta {MAX_PRODUCT_IMAGES})</small>
                 </span>
                 <p className="image-field-hint">
-                  La primera es la portada del listado. Podés reordenarlas.
+                  Arrastrá las fotos para reordenar. La primera es la portada.
                 </p>
                 <ul className="image-gallery">
-                  {slots.map((slot, index) => {
+                  {Array.from({ length: MAX_PRODUCT_IMAGES }, (_, index) => {
+                    const slot = slots[index]
+                    if (!slot) {
+                      const isNext = index === slots.length
+                      return (
+                        <li key={`empty-${index}`} className="image-gallery-item">
+                          <div className="image-gallery-card">
+                            <button
+                              type="button"
+                              className={`image-gallery-frame image-gallery-add${isNext ? '' : ' is-placeholder'}`}
+                              disabled={busy !== undefined || !isNext}
+                              aria-label={
+                                isNext
+                                  ? `Agregar foto ${index + 1}`
+                                  : `Espacio para foto ${index + 1}`
+                              }
+                              onClick={() => {
+                                if (isNext) openFilePicker(null)
+                              }}
+                            >
+                              {isNext ? (
+                                <>
+                                  <span
+                                    className="image-gallery-add-icon"
+                                    aria-hidden="true"
+                                  >
+                                    +
+                                  </span>
+                                  <span className="image-gallery-add-label">
+                                    Agregar
+                                  </span>
+                                </>
+                              ) : null}
+                            </button>
+                            <div
+                              className="image-gallery-toolbar"
+                              aria-hidden="true"
+                            />
+                          </div>
+                        </li>
+                      )
+                    }
+
                     const url =
                       slot.kind === 'pending' ? slot.preview : slot.url
                     const isCover = index === 0
+                    const isDragging = dragFrom === index
+                    const isDropTarget =
+                      dragFrom != null &&
+                      dragOver === index &&
+                      dragFrom !== index
                     return (
                       <li
                         key={slot.kind === 'existing' ? slot.id : url}
-                        className="image-gallery-item"
+                        className={`image-gallery-item${isDragging ? ' is-dragging' : ''}${isDropTarget ? ' is-drop-target' : ''}`}
+                        data-slot-index={index}
                       >
                         <div
                           className={`image-gallery-card${isCover ? ' is-cover' : ''}`}
                         >
-                          {isCover && (
-                            <span className="image-gallery-badge">Portada</span>
-                          )}
-                          <button
-                            type="button"
-                            className="image-gallery-preview"
-                            aria-label={`Ver foto ${index + 1} más grande`}
-                            onClick={() => setLightboxUrl(url)}
-                          >
-                            <ProductThumb
-                              product={{
-                                id: product?.id,
-                                imageUrl: url,
-                                categoryKey,
+                          <div className="image-gallery-frame">
+                            {isCover && (
+                              <span className="image-gallery-badge">Portada</span>
+                            )}
+                            <button
+                              type="button"
+                              className={`image-gallery-preview${slots.length > 1 ? ' is-draggable' : ''}`}
+                              aria-label={
+                                slots.length > 1
+                                  ? `Foto ${index + 1}: arrastrar para reordenar o tocar para ampliar`
+                                  : `Ver foto ${index + 1} más grande`
+                              }
+                              onPointerDown={(event) =>
+                                handleImagePointerDown(event, index)
+                              }
+                              onClick={() => {
+                                if (suppressPreviewClickRef.current) {
+                                  suppressPreviewClickRef.current = false
+                                  return
+                                }
+                                setLightboxUrl(url)
                               }}
-                              size="large"
-                            />
-                          </button>
+                            >
+                              <ProductThumb
+                                product={{
+                                  id: product?.id,
+                                  imageUrl: url,
+                                  categoryKey,
+                                }}
+                                size="large"
+                              />
+                            </button>
+                          </div>
                           <div className="image-gallery-toolbar">
                             <button
                               type="button"
-                              className="image-gallery-tool"
-                              disabled={busy !== undefined || index === 0}
-                              aria-label={`Mover foto ${index + 1} a la izquierda`}
-                              onClick={() => moveSlot(index, -1)}
-                            >
-                              ←
-                            </button>
-                            <button
-                              type="button"
-                              className="image-gallery-tool"
-                              disabled={
-                                busy !== undefined || index === slots.length - 1
-                              }
-                              aria-label={`Mover foto ${index + 1} a la derecha`}
-                              onClick={() => moveSlot(index, 1)}
-                            >
-                              →
-                            </button>
-                            <button
-                              type="button"
-                              className="image-gallery-tool"
+                              className="icon-button image-gallery-action"
                               disabled={busy !== undefined}
                               aria-label={`Cambiar foto ${index + 1}`}
                               onClick={() => openFilePicker(index)}
                             >
-                              ✎
+                              <ReplaceImageIcon />
                             </button>
                             <button
                               type="button"
-                              className="image-gallery-tool"
+                              className="icon-button image-gallery-action"
                               disabled={busy !== undefined}
                               aria-label={`Quitar foto ${index + 1}`}
                               onClick={() => removeSlot(index)}
                             >
-                              ✕
+                              <CloseIcon />
                             </button>
                           </div>
                         </div>
                       </li>
                     )
                   })}
-                  {Array.from(
-                    { length: MAX_PRODUCT_IMAGES - slots.length },
-                    (_, emptyIndex) => (
-                      <li
-                        key={`empty-${emptyIndex}`}
-                        className="image-gallery-item"
-                      >
-                        <button
-                          type="button"
-                          className="image-gallery-add"
-                          disabled={busy !== undefined || !canAddMore}
-                          onClick={() => openFilePicker(null)}
-                        >
-                          <span aria-hidden="true">+</span>
-                          <span>
-                            {slots.length === 0 && emptyIndex === 0
-                              ? 'Agregar'
-                              : 'Foto'}
-                          </span>
-                        </button>
-                      </li>
-                    ),
-                  )}
                 </ul>
                 <input
                   ref={fileInputRef}
@@ -474,5 +568,45 @@ export function ProductFormSheet({
         />
       )}
     </>
+  )
+}
+
+function ReplaceImageIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+      <path d="M16 16h5v5" />
+    </svg>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
   )
 }

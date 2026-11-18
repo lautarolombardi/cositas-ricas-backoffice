@@ -181,7 +181,14 @@ export function ProductsPage({ token, onUnauthorized }: ProductsPageProps) {
                     type="button"
                     className="chip"
                     aria-pressed={categoryFilter === category.key}
-                    onClick={() => setCategoryFilter(category.key)}
+                    onClick={(event) => {
+                      setCategoryFilter(category.key)
+                      event.currentTarget.scrollIntoView({
+                        behavior: 'smooth',
+                        inline: 'center',
+                        block: 'nearest',
+                      })
+                    }}
                   >
                     {category.name}
                   </button>
