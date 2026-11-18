@@ -165,6 +165,19 @@ export function ProductFormSheet({
     })
   }
 
+  function moveSlot(index: number, direction: -1 | 1) {
+    setSlots((current) => {
+      const target = index + direction
+      if (target < 0 || target >= current.length) return current
+      const next = [...current]
+      const a = next[index]!
+      const b = next[target]!
+      next[index] = b
+      next[target] = a
+      return next
+    })
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setBusy('saving')
@@ -303,18 +316,30 @@ export function ProductFormSheet({
             <div className="image-field" aria-labelledby={imagesLabelId}>
               <div className="field">
                 <span id={imagesLabelId}>
-                  Fotos <small>(hasta {MAX_PRODUCT_IMAGES}, opcional)</small>
+                  Fotos <small>(hasta {MAX_PRODUCT_IMAGES})</small>
                 </span>
-                <ul className="image-slot-list">
+                <p className="image-field-hint">
+                  La primera es la portada del listado. Podés reordenarlas.
+                </p>
+                <ul className="image-gallery">
                   {slots.map((slot, index) => {
                     const url =
                       slot.kind === 'pending' ? slot.preview : slot.url
+                    const isCover = index === 0
                     return (
-                      <li key={slot.kind === 'existing' ? slot.id : url}>
-                        <div className="image-slot">
+                      <li
+                        key={slot.kind === 'existing' ? slot.id : url}
+                        className="image-gallery-item"
+                      >
+                        <div
+                          className={`image-gallery-card${isCover ? ' is-cover' : ''}`}
+                        >
+                          {isCover && (
+                            <span className="image-gallery-badge">Portada</span>
+                          )}
                           <button
                             type="button"
-                            className="thumb-zoom-button"
+                            className="image-gallery-preview"
                             aria-label={`Ver foto ${index + 1} más grande`}
                             onClick={() => setLightboxUrl(url)}
                           >
@@ -327,39 +352,74 @@ export function ProductFormSheet({
                               size="large"
                             />
                           </button>
-                          <div className="image-slot-actions">
+                          <div className="image-gallery-toolbar">
                             <button
                               type="button"
-                              className="ghost-button"
-                              disabled={busy !== undefined}
-                              onClick={() => openFilePicker(index)}
+                              className="image-gallery-tool"
+                              disabled={busy !== undefined || index === 0}
+                              aria-label={`Mover foto ${index + 1} a la izquierda`}
+                              onClick={() => moveSlot(index, -1)}
                             >
-                              Cambiar
+                              ←
                             </button>
                             <button
                               type="button"
-                              className="ghost-button"
+                              className="image-gallery-tool"
+                              disabled={
+                                busy !== undefined || index === slots.length - 1
+                              }
+                              aria-label={`Mover foto ${index + 1} a la derecha`}
+                              onClick={() => moveSlot(index, 1)}
+                            >
+                              →
+                            </button>
+                            <button
+                              type="button"
+                              className="image-gallery-tool"
                               disabled={busy !== undefined}
+                              aria-label={`Cambiar foto ${index + 1}`}
+                              onClick={() => openFilePicker(index)}
+                            >
+                              ✎
+                            </button>
+                            <button
+                              type="button"
+                              className="image-gallery-tool"
+                              disabled={busy !== undefined}
+                              aria-label={`Quitar foto ${index + 1}`}
                               onClick={() => removeSlot(index)}
                             >
-                              Quitar
+                              ✕
                             </button>
                           </div>
                         </div>
                       </li>
                     )
                   })}
+                  {Array.from(
+                    { length: MAX_PRODUCT_IMAGES - slots.length },
+                    (_, emptyIndex) => (
+                      <li
+                        key={`empty-${emptyIndex}`}
+                        className="image-gallery-item"
+                      >
+                        <button
+                          type="button"
+                          className="image-gallery-add"
+                          disabled={busy !== undefined || !canAddMore}
+                          onClick={() => openFilePicker(null)}
+                        >
+                          <span aria-hidden="true">+</span>
+                          <span>
+                            {slots.length === 0 && emptyIndex === 0
+                              ? 'Agregar'
+                              : 'Foto'}
+                          </span>
+                        </button>
+                      </li>
+                    ),
+                  )}
                 </ul>
-                <div className="image-field-actions">
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    disabled={busy !== undefined || !canAddMore}
-                    onClick={() => openFilePicker(null)}
-                  >
-                    {slots.length === 0 ? 'Elegir fotos' : 'Agregar foto'}
-                  </button>
-                </div>
                 <input
                   ref={fileInputRef}
                   type="file"
